@@ -1,0 +1,1 @@
+# splatoon-x-rss
