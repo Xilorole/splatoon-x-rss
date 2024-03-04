@@ -4,8 +4,10 @@
 # Activate your environment, if necessary
 # source /path/to/your/venv/bin/activate
 
+cd ${HOME}/splatoon-x-rss
+
 # Run your Python script
-python run.py
+conda run -n splatoon-x-rss python run.py
 
 # Navigate to the docs directory
 cd docs
