@@ -1,9 +1,11 @@
 import os
+import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from random import random
 from time import sleep
+from xml.dom import minidom
 
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -20,6 +22,7 @@ class RSSFeed:
         ET.SubElement(self.channel, "title").text = title
         ET.SubElement(self.channel, "link").text = link
         ET.SubElement(self.channel, "description").text = description
+        self.format = "%a, %d %b %Y %H:%M:%S"
 
     def add_item(self, title, link, description, pubDate=None):
         item = ET.SubElement(self.channel, "item")
@@ -27,17 +30,35 @@ class RSSFeed:
         ET.SubElement(item, "link").text = link
         ET.SubElement(item, "description").text = description
         if pubDate:
-            ET.SubElement(item, "pubDate").text = pubDate.strftime(
-                "%a, %d %b %Y %H:%M:%S %z"
-            )
+            ET.SubElement(item, "pubDate").text = pubDate.strftime(self.format)
         else:
-            ET.SubElement(item, "pubDate").text = datetime.now().strftime(
-                "%a, %d %b %Y %H:%M:%S %z"
-            )
+            ET.SubElement(item, "pubDate").text = datetime.now().strftime(self.format)
 
     def export(self, filename):
-        tree = ET.ElementTree(self.root)
-        tree.write(filename, encoding="utf-8", xml_declaration=True)
+        placeholder_date = datetime.min.strftime(self.format)
+
+        def get_pubDate(item):
+            pubDate_element = item.find("pubDate")
+            return (
+                pubDate_element.text
+                if pubDate_element is not None and pubDate_element.text is not None
+                else placeholder_date
+            )
+
+        # Adjusted format string to exclude timezone
+        items = sorted(
+            self.channel.findall("item"),
+            key=lambda x: datetime.strptime(get_pubDate(x), self.format),
+            reverse=True,
+        )
+        self.channel[:] = items
+
+        rough_string = ET.tostring(self.root, "utf-8")
+        reparsed = minidom.parseString(rough_string)
+        pretty_string = reparsed.toprettyxml(indent="  ", encoding="utf-8")
+
+        with open(filename, "wb") as file:
+            file.write(pretty_string)
 
 
 webdriver.Chrome()
@@ -112,9 +133,25 @@ driver.get("https://twitter.com/SplatoonJP")
 sleep(3 + 4 * random())
 n_elements = len(driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]'))
 
+
+def extract_twitter_link(url):
+    # Define a regex pattern to match the desired URL format and capture the relevant parts
+    pattern = r"(https://twitter\.com/[^/]+/status/\d+)/?"
+
+    # Use the regex to search for a match in the input URL
+    match = re.search(pattern, url)
+
+    # If a match is found, return the matched URL (without any trailing components)
+    if match:
+        return match.group(1) + "/"
+    else:
+        # Return the original URL or an error message if no match is found
+        return "Invalid Twitter URL"
+
+
 try:
-    # for i in tqdm(range(n_elements)):
-    for i in tqdm(range(2)):
+    for i in tqdm(range(n_elements)):
+        # for i in tqdm(range(3)):
         driver.get("https://twitter.com/SplatoonJP")
         sleep(3 + 4 * random())
         driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]')[i].click()
@@ -134,7 +171,7 @@ try:
                 By.XPATH, '//*[@data-testid="tweetText"]'
             ).text.replace("\n", "")[:50]
             + "...",
-            link=driver.current_url,
+            link=extract_twitter_link(driver.current_url),
             description=driver.find_element(
                 By.XPATH, '//*[@data-testid="tweetText"]'
             ).text,
