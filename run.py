@@ -1,8 +1,9 @@
 import os
 import re
-import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from logging import getLogger
+from pathlib import Path
 from random import random
 from time import sleep
 from xml.dom import minidom
@@ -13,6 +14,7 @@ from selenium.webdriver.common.by import By
 from tqdm import tqdm
 
 load_dotenv()
+logger = getLogger(__name__)
 
 
 class RSSFeed:
@@ -61,77 +63,30 @@ class RSSFeed:
             file.write(pretty_string)
 
 
-webdriver.Chrome()
-options = webdriver.ChromeOptions()
-# ヘッドレスモードに
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-# ブラウザーを起動
-driver = webdriver.Chrome(options=options)
-driver.set_window_size(
-    "1080", "1920"
-)  # 大事。デフォルトが800*600になっている。headlessだと要素部分が表示されないことがあるため。
-
-twitter_base = "https://twitter.com/" + "login/"
-account = os.environ.get("USERNAME")
-password = os.environ.get("PASSWORD")
-
-# ログインページを開く
-driver.get(twitter_base)
-time.sleep(5)
-
-# account入力
-element_account = driver.find_element(by=By.NAME, value="text")
-element_account.send_keys(account)
-
-# デバッグ1
-driver.save_screenshot("①ログインID入力画面.png")
-
-driver.find_element(by=By.XPATH, value='//div/span/span[text()="Next"]')
-
-# 次へボタンクリック
-element_login_next = driver.find_element(
-    by=By.XPATH, value='//div/span/span[text()="Next"]'
-)
-# print(element_login_next)
-# driver.close()
-# exit()
-
-# 画像のリンクをクリック
-element_login_next.click()
-time.sleep(5)
-
-# パスワード入力
-element_pass = driver.find_element(by=By.NAME, value="password")
-element_pass.send_keys(password)
-
-# ログインボタンクリック
-element_login = driver.find_element(
-    by=By.XPATH, value='//div/span/span[text()="Log in"]'
-)
-# print(element_login)
-# driver.close()
-# exit()
-
-# デバッグ2
-driver.save_screenshot("②ログインPW入力画面.png")
-# driver.close()
-# exit()
-
-element_login.click()
-time.sleep(5)
+def initialize_webdriver():
+    """Initialize and return a headless Chrome WebDriver."""
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    driver = webdriver.Chrome(options=options)
+    driver.set_window_size("1080", "1920")
+    return driver
 
 
-feed = RSSFeed(
-    title="スプラトゥーン3",
-    link="https://twitter.com/SplatoonJP",
-    description="スプラトゥーン3公式Twitter",
-)
-
-
-driver.get("https://twitter.com/SplatoonJP")
-sleep(3 + 4 * random())
-n_elements = len(driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]'))
+def login_to_twitter(driver, username, password):
+    """Log in to Twitter using the provided credentials."""
+    twitter_base = "https://twitter.com/login/"
+    driver.get(twitter_base)
+    sleep(5)
+    logger.info("sending username")
+    driver.find_element(by=By.NAME, value="text").send_keys(username)
+    driver.find_element(by=By.XPATH, value='//div/span/span[text()="Next"]').click()
+    sleep(5)
+    logger.info("sending password")
+    driver.find_element(by=By.NAME, value="password").send_keys(password)
+    driver.find_element(by=By.XPATH, value='//div/span/span[text()="Log in"]').click()
+    sleep(5)
+    logger.info("Logged in to Twitter")
 
 
 def extract_twitter_link(url):
@@ -149,40 +104,75 @@ def extract_twitter_link(url):
         return "Invalid Twitter URL"
 
 
-try:
-    for i in tqdm(range(n_elements)):
-        # for i in tqdm(range(3)):
-        driver.get("https://twitter.com/SplatoonJP")
-        sleep(3 + 4 * random())
-        driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]')[i].click()
+if __name__ == "__main__":
+    logger = getLogger(__name__)
+    base_dir = Path(__file__).parent.absolute()
 
-        sleep(3 + 4 * random())
+    driver = initialize_webdriver()
+    login_to_twitter(driver, os.environ.get("USERNAME"), os.environ.get("PASSWORD"))
 
-        time_element = driver.find_element(By.TAG_NAME, "time")
-        datetime_value = time_element.get_attribute("datetime")
-        if datetime_value is not None:
-            pubDate_datetime = datetime.fromisoformat(
-                datetime_value[:-5]
-            )  # Remove milliseconds for compatibility
-        else:
-            pubDate_datetime = None
-        feed.add_item(
-            title=driver.find_element(
+    feed = RSSFeed(
+        title="スプラトゥーン3",
+        link="https://twitter.com/SplatoonJP",
+        description="スプラトゥーン3公式Twitter",
+    )
+
+    logger.info("accessing splatoonjp")
+    driver.get("https://twitter.com/SplatoonJP")
+    sleep(3 + 4 * random())
+    n_elements = len(driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]'))
+
+    logger.info(f"{n_elements} elements found")
+    try:
+        for i in tqdm(range(n_elements)):
+            # for i in tqdm(range(3)):
+            logger.info(f"[{i}] accessing splatoonjp")
+            sleep(3 + 4 * random())
+            # logger.info("scrolling...")
+            # ActionChains(driver=driver).scroll_by_amount(0, 800).perform()
+            # sleep(3 + 4 * random())
+
+            logger.info(f"saved screenshot to : logged_in_{i}.png")
+            driver.save_screenshot(f"logged_in_{i}.png")
+            driver.find_elements(By.XPATH, '//*[@data-testid="cellInnerDiv"]')[
+                i
+            ].click()
+            sleep(3 + 4 * random())
+
+            time_element = driver.find_element(By.TAG_NAME, "time")
+            datetime_value = time_element.get_attribute("datetime")
+            if datetime_value is not None:
+                pubDate_datetime = datetime.fromisoformat(
+                    datetime_value[:-5]
+                )  # Remove milliseconds for compatibility
+            else:
+                pubDate_datetime = None
+            title = (
+                driver.find_element(
+                    By.XPATH, '//*[@data-testid="tweetText"]'
+                ).text.replace("\n", "")[:50]
+                + "..."
+            )
+            link = extract_twitter_link(driver.current_url)
+            description = driver.find_element(
                 By.XPATH, '//*[@data-testid="tweetText"]'
-            ).text.replace("\n", "")[:50]
-            + "...",
-            link=extract_twitter_link(driver.current_url),
-            description=driver.find_element(
-                By.XPATH, '//*[@data-testid="tweetText"]'
-            ).text,
-            pubDate=pubDate_datetime,
-        )
-        sleep(3 + 4 * random())
-    feed.export("docs/assets/rss/rss.xml")
-except IndexError as e:
-    print(e)
-    feed.export("docs/assets/rss/rss.xml")
-except Exception as e:
-    print(e)
-    feed.export("docs/assets/rss/rss.xml")
-    driver.save_screenshot("something_wrong.png")
+            ).text
+            pubDate = pubDate_datetime
+            logger.info(f"adding item {title} @ [{pubDate}]")
+            feed.add_item(
+                title=title,
+                link=link,
+                description=description,
+                pubDate=pubDate,
+            )
+            sleep(3 + 4 * random())
+            driver.back()
+        feed.export(base_dir / "docs/assets/rss/rss.xml")
+    except IndexError as e:
+        logger.error(e)
+        feed.export(base_dir / "docs/assets/rss/rss.xml")
+    except Exception as e:
+        logger.error(e)
+        feed.export(base_dir / "docs/assets/rss/rss.xml")
+        driver.save_screenshot("something_wrong.png")
+        raise e
