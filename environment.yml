@@ -1,0 +1,11 @@
+name: splatoon-x-rss
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - jupyter
+  - python-dotenv
+  - selenium
+  - tqdm
+  - pip:
+    - webdriver_manager
