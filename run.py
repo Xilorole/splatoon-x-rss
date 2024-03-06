@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
         # search splatoon JP in link
         if re.search(
-            "SplatoonJP|nintendo_cs", extract_twitter_link(driver.current_url)
+            "SplatoonJP|nintendo_cs|Nintendo", extract_twitter_link(driver.current_url)
         ):
             time_element = driver.find_element(By.TAG_NAME, "time")
             tweet_element = driver.find_element(
