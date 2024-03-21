@@ -57,6 +57,10 @@ class RSSFeed:
                 ET.SubElement(item, "pubDate").text = datetime.now().strftime(
                     self.format
                 )
+            self.registered |= {link}
+
+    def is_registered(self, url: str) -> bool:
+        return url in self.registered
 
     def export(self, filename):
         placeholder_date = datetime.min.strftime(self.format)
