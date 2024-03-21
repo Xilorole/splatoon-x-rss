@@ -100,28 +100,28 @@ def initialize_webdriver():
     return driver
 
 
-def login_to_twitter(driver, username, password):
+def login_to_twitter(driver, username, password, sleep_time=5):
     """Log in to Twitter using the provided credentials."""
     twitter_base = "https://twitter.com/login/"
     driver.get(twitter_base)
-    sleep(5)
+    sleep(sleep_time)
     logger.info("sending username")
-    WebDriverWait(driver, 10).until(
+    WebDriverWait(driver, sleep_time).until(
         lambda x: x.find_element(by=By.NAME, value="text")
         and x.find_element(by=By.XPATH, value='//div/span/span[text()="Next"]')
     )
-    sleep(5)
+    sleep(sleep_time)
     driver.find_element(by=By.NAME, value="text").send_keys(username)
     driver.find_element(by=By.XPATH, value='//div/span/span[text()="Next"]').click()
-    sleep(5)
+    sleep(sleep_time)
     logger.info("sending password")
-    WebDriverWait(driver, 10).until(
+    WebDriverWait(driver, sleep_time).until(
         lambda x: x.find_element(by=By.NAME, value="password")
         and x.find_element(by=By.XPATH, value='//div/span/span[text()="Log in"]')
     )
     driver.find_element(by=By.NAME, value="password").send_keys(password)
     driver.find_element(by=By.XPATH, value='//div/span/span[text()="Log in"]').click()
-    sleep(5)
+    sleep(sleep_time)
     logger.info("Logged in to Twitter")
 
 
