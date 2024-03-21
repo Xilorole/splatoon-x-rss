@@ -89,7 +89,48 @@ class RSSFeed:
             file.write(pretty_string)
 
 
-def initialize_webdriver():
+class Tweet:
+    def __init__(self, driver: webdriver.Chrome, target_text: Optional[str]):
+        if target_text:
+            tweet_element = list(
+                filter(
+                    lambda e: e.text == target_text,
+                    driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'),
+                )
+            )[0]
+        else:
+            tweet_element = driver.find_element(
+                By.XPATH, '//*[@data-testid="tweetText"]'
+            )
+
+        parent_element = driver.find_element(By.ID, tweet_element.get_attribute("id"))
+        while True:
+            try:
+                time_elements = parent_element.find_elements(By.TAG_NAME, "time")
+                if len(time_elements) == 1:
+                    datetime_value: Optional[str] = time_elements[0].get_attribute(
+                        "datetime"
+                    )
+                    break
+                elif len(time_elements) > 1:
+                    raise ValueError(
+                        "Multiple time elements found within the same parent."
+                    )
+                else:
+                    parent_element = parent_element.find_element(By.XPATH, "..")
+            except NoSuchElementException:
+                raise ValueError("No time element found within the hierarchy.")
+
+        if datetime_value is not None:
+            self.pubDate_datetime: Optional[datetime] = datetime.fromisoformat(
+                datetime_value[:-5]
+            )  # Remove milliseconds for compatibility
+        else:
+            self.pubDate_datetime: Optional[datetime] = None
+        self.link: str = extract_twitter_link(driver.current_url)
+        self.description: str = tweet_element.text
+        self.title: str = self.description.replace("\n", "")[:50] + "..."
+
     """Initialize and return a headless Chrome WebDriver."""
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
@@ -188,35 +229,37 @@ if __name__ == "__main__":
         logger.info(f"clicking item with text {element.text[:50].replace('\n','')}")
         element.click()
         sleep(3 + 4 * random())
+        tweet = Tweet(driver, target_text=element_text)
 
         # search splatoon JP in link
-        if re.search(
-            "SplatoonJP|nintendo_cs|Nintendo", extract_twitter_link(driver.current_url)
-        ):
-            time_element = driver.find_element(By.TAG_NAME, "time")
-            tweet_element = driver.find_element(
-                By.XPATH, '//*[@data-testid="tweetText"]'
-            )
+        cond_link = not re.search(
+            "SplatoonJP|nintendo_cs|Nintendo", extract_twitter_link(tweet.link)
+        )
+        cond_title = Levenshtein.ratio(tweet.description, element_text) < 0.7
+        cond_registered = feed.is_registered(tweet.link)
 
-            datetime_value = time_element.get_attribute("datetime")
-            if datetime_value is not None:
-                pubDate_datetime = datetime.fromisoformat(
-                    datetime_value[:-5]
-                )  # Remove milliseconds for compatibility
-            else:
-                pubDate_datetime = None
+        if cond_link or cond_title or cond_registered:
+            logger.info(f"skipping {tweet.title.replace('\n','')}")
+            if cond_link:
+                logger.error(f"link is not splatoon: {tweet.link}")
+            if cond_title:
+                logger.error(
+                    f"title is not same @ {Levenshtein.ratio(tweet.description, element_text):.2f}"
+                )
+                logger.error(f"TARGET: {element_text.replace('\n','')}")
+                logger.error(f"ACCESS: {tweet.description.replace('\n','')}")
+            if cond_registered:
+                logger.error(f"link is already registered: {tweet.title}")
+            driver.back()
+            continue
 
-            link = extract_twitter_link(driver.current_url)
-            description = tweet_element.text
-            title = description.replace("\n", "")[:50] + "..."
-
-            logger.info(f"adding item {title} @ [{pubDate_datetime}]")
-            feed.add_item(
-                title=title,
-                link=link,
-                description=description,
-                pubDate=pubDate_datetime,
-            )
-            sleep(3 + 4 * random())
+        logger.info(f"adding item {tweet.title[:20]} @ [{tweet.pubDate_datetime}]")
+        feed.add_item(
+            title=tweet.title,
+            link=tweet.link,
+            description=tweet.description,
+            pubDate=tweet.pubDate_datetime,
+        )
+        sleep(3 + 4 * random())
         driver.back()
     feed.export(base_dir / "docs/assets/rss/rss.xml")
