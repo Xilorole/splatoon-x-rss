@@ -7,10 +7,13 @@ from logging import getLogger
 from pathlib import Path
 from random import random
 from time import sleep
+from typing import Optional
 from xml.dom import minidom
 
+import Levenshtein
 from dotenv import load_dotenv
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 
@@ -34,6 +37,17 @@ logger.addHandler(ch)
 
 class RSSFeed:
     def __init__(self, title, link, description):
+        """_summary_
+
+        Parameters
+        ----------
+        title : _type_
+            _description_
+        link : _type_
+            _description_
+        description : _type_
+            _description_
+        """
         self.root = ET.Element("rss", version="2.0")
         self.channel = ET.SubElement(self.root, "channel")
         ET.SubElement(self.channel, "title").text = title
@@ -44,6 +58,19 @@ class RSSFeed:
         self.registered = set()
 
     def add_item(self, title, link, description, pubDate=None):
+        """_summary_
+
+        Parameters
+        ----------
+        title : _type_
+            _description_
+        link : _type_
+            _description_
+        description : _type_
+            _description_
+        pubDate : _type_, optional
+            _description_, by default None
+        """
         if link in self.registered:
             logger.info(f'the object already exists "{title}". skipped.')
         else:
@@ -131,9 +158,12 @@ class Tweet:
         self.description: str = tweet_element.text
         self.title: str = self.description.replace("\n", "")[:50] + "..."
 
+
+def initialize_webdriver(headless=True):
     """Initialize and return a headless Chrome WebDriver."""
     options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
+    if headless:
+        options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disk-cache-dir=./.cache")
     driver = webdriver.Chrome(options=options)
@@ -184,6 +214,7 @@ def extract_twitter_link(url):
 if __name__ == "__main__":
     base_dir = Path(".").parent.absolute()
 
+    logger.info("initializing webdriver")
     driver = initialize_webdriver()
     login_to_twitter(driver, os.environ.get("USERNAME"), os.environ.get("PASSWORD"))
 
@@ -200,26 +231,23 @@ if __name__ == "__main__":
         lambda x: x.find_element(By.XPATH, '//*[@data-testid="cellInnerDiv"]')
     )
 
-    n_elements = len(driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'))
+    # まず最初に最新のテキストの一覧を取得して、そのテキストと一致しているものがあれば取得するにように調整するほうがいいか？
+    element_texts = []
+    for element in driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'):
+        element_texts.append(element.text)
+    logger.info(f"{len(element_texts)} elements found")
+    for i, element_text in enumerate(element_texts):
+        logger.info(f"  - [{i}] {element_text.replace("\n","")[:20]}")
 
-    logger.info(f"{n_elements} elements found")
-    driver.get("https://twitter.com/SplatoonJP")
-
-    for i in range(n_elements):
-        # access
-        logger.info(f"[{i}] accessing splatoonjp")
+    for element_text in element_texts:
         sleep(3 + 4 * random())
+        element = list(
+            filter(
+                lambda e: element_text == e.text,
+                driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'),
+            )
+        )[0]
 
-        # wait until load
-        WebDriverWait(driver, 10).until(
-            lambda x: x.find_elements(By.XPATH, '//*[@data-testid="tweetText"]')
-        )
-        logger.info(f"saved screenshot to : logged_in_{i}.png")
-        driver.save_screenshot(f"logged_in_{i}.png")
-
-        # scroll to item
-        logger.info("scrolling to item")
-        element = driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]')[i]
         driver.execute_script(
             "arguments[0].scrollIntoView({block: 'center'});", element
         )
