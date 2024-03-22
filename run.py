@@ -7,7 +7,7 @@ from logging import getLogger
 from pathlib import Path
 from random import random
 from time import sleep
-from typing import Optional
+from typing import Optional, Set
 from xml.dom import minidom
 
 import Levenshtein
@@ -36,17 +36,18 @@ logger.addHandler(ch)
 
 
 class RSSFeed:
-    def __init__(self, title, link, description):
-        """_summary_
+    def __init__(self, title: str, link: str, description: str):
+        """
+        Initialize an RSSFeed object.
 
         Parameters
         ----------
-        title : _type_
-            _description_
-        link : _type_
-            _description_
-        description : _type_
-            _description_
+        title : str
+            The title of the RSS feed.
+        link : str
+            The link to the RSS feed.
+        description : str
+            The description of the RSS feed.
         """
         self.root = ET.Element("rss", version="2.0")
         self.channel = ET.SubElement(self.root, "channel")
@@ -54,59 +55,93 @@ class RSSFeed:
         ET.SubElement(self.channel, "link").text = link
         ET.SubElement(self.channel, "description").text = description
         self.format = "%a, %d %b %Y %H:%M:%S"
+        self.registered: Set[str] = set()
 
-        self.registered = set()
-
-    def add_item(self, title, link, description, pubDate=None):
-        """_summary_
+    def add_item(
+        self,
+        title: str,
+        link: str,
+        description: str,
+        pubDate: Optional[datetime] = None,
+    ):
+        """
+        Add an item to the RSS feed.
 
         Parameters
         ----------
-        title : _type_
-            _description_
-        link : _type_
-            _description_
-        description : _type_
-            _description_
-        pubDate : _type_, optional
-            _description_, by default None
+        title : str
+            The title of the item.
+        link : str
+            The link to the item.
+        description : str
+            The description of the item.
+        pubDate : datetime, optional
+            The publication date of the item, by default None.
         """
         if link in self.registered:
-            logger.info(f'the object already exists "{title}". skipped.')
+            logger.info(f'The object already exists "{title}". Skipped.')
         else:
             item = ET.SubElement(self.channel, "item")
             ET.SubElement(item, "title").text = title
             ET.SubElement(item, "link").text = link
             ET.SubElement(item, "description").text = description
-            if pubDate:
-                ET.SubElement(item, "pubDate").text = pubDate.strftime(self.format)
-            else:
-                ET.SubElement(item, "pubDate").text = datetime.now().strftime(
-                    self.format
-                )
-            self.registered |= {link}
+            pub_date_text = (
+                pubDate.strftime(self.format)
+                if pubDate
+                else datetime.now().strftime(self.format)
+            )
+            ET.SubElement(item, "pubDate").text = pub_date_text
+            self.registered.add(link)
 
     def is_registered(self, url: str) -> bool:
+        """
+        Check if a URL is registered in the RSS feed.
+
+        Parameters
+        ----------
+        url : str
+            The URL to check.
+
+        Returns
+        -------
+        bool
+            True if the URL is registered, False otherwise.
+        """
         return url in self.registered
 
-    def export(self, filename):
+    def export(self, filename: str):
+        """
+        Export the RSS feed to an XML file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file to export the RSS feed to.
+        """
         placeholder_date = datetime.min.strftime(self.format)
 
-        def get_pubDate(item):
+        def get_pubDate(item: ET.Element) -> str:
             pubDate_element = item.find("pubDate")
             return (
                 pubDate_element.text
-                if pubDate_element is not None and pubDate_element.text is not None
+                if pubDate_element is not None and pubDate_element.text
                 else placeholder_date
             )
 
-        # Adjusted format string to exclude timezone
-        items = sorted(
-            self.channel.findall("item"),
+        items = self.channel.findall("item")
+        sorted_items = sorted(
+            items,
             key=lambda x: datetime.strptime(get_pubDate(x), self.format),
             reverse=True,
         )
-        self.channel[:] = items
+
+        # Remove existing items from the channel
+        for item in items:
+            self.channel.remove(item)
+
+        # Append the sorted items to the channel
+        for item in sorted_items:
+            self.channel.append(item)
 
         rough_string = ET.tostring(self.root, "utf-8")
         reparsed = minidom.parseString(rough_string)
@@ -115,16 +150,107 @@ class RSSFeed:
         with open(filename, "wb") as file:
             file.write(pretty_string)
 
+    @classmethod
+    def import_from_file(cls, filename: os.PathLike) -> Optional["RSSFeed"]:
+        """
+        Import an RSS feed from an XML file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the XML file to import the RSS feed from.
+
+        Returns
+        -------
+        Optional['RSSFeed']
+            An instance of the RSSFeed class if the import is successful, None otherwise.
+        """
+        try:
+            tree = ET.parse(filename)
+            root = tree.getroot()
+
+            if root.tag != "rss" or root.get("version") != "2.0":
+                logger.error(f"Invalid RSS format in file: {filename}")
+                return None
+
+            channel = root.find("channel")
+            if channel is None:
+                logger.error(f"Channel element not found in file: {filename}")
+                return None
+
+            title = channel.findtext("title")
+            link = channel.findtext("link")
+            description = channel.findtext("description")
+
+            if title is None or link is None or description is None:
+                logger.error(f"Missing required elements in file: {filename}")
+                return None
+
+            rss_feed = cls(title, link, description)
+
+            for item in channel.findall("item"):
+                item_title = item.findtext("title")
+                item_link = item.findtext("link")
+                item_description = item.findtext("description")
+                item_pubDate_text = item.findtext("pubDate")
+
+                if item_title is None or item_link is None or item_description is None:
+                    logger.warning(f"Missing required elements in item: {item_title}")
+                    continue
+
+                item_pubDate = None
+                if item_pubDate_text:
+                    try:
+                        item_pubDate = datetime.strptime(
+                            item_pubDate_text, rss_feed.format
+                        )
+                    except ValueError:
+                        logger.warning(f"Invalid pubDate format in item: {item_title}")
+
+                rss_feed.add_item(item_title, item_link, item_description, item_pubDate)
+
+            return rss_feed
+
+        except FileNotFoundError:
+            logger.error(f"File not found: {filename}")
+            return None
+
+        except ET.ParseError:
+            logger.error(f"Error parsing XML file: {filename}")
+            return None
+
 
 class Tweet:
     def __init__(self, driver: webdriver.Chrome, target_text: Optional[str]):
         if target_text:
-            tweet_element = list(
+            tweet_elements = list(
                 filter(
                     lambda e: e.text == target_text,
                     driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'),
                 )
-            )[0]
+            )
+            if len(tweet_elements) == 0:
+                logging.error(f"no element detected with target_text: {target_text}")
+                top_1 = sorted(
+                    driver.find_elements(By.XPATH, '//*[@data-testid="tweetText"]'),
+                    key=(lambda x: -Levenshtein.ratio(x.text, target_text)),
+                )[0]
+
+                logging.error(
+                    f"most matching item is {top_1.text} @ {Levenshtein.ratio(top_1.text, target_text)}"
+                )
+                if (
+                    Levenshtein.ratio(
+                        re.sub(r"https?:.*(?=\s)", "", top_1.text),
+                        re.sub(r"https?:.*(?=\s)", "", target_text),
+                    )
+                    > 0.95
+                ):
+                    tweet_element = top_1
+                else:
+                    raise NoSuchElementException
+            else:
+                tweet_element = tweet_elements[0]
         else:
             tweet_element = driver.find_element(
                 By.XPATH, '//*[@data-testid="tweetText"]'
@@ -140,9 +266,15 @@ class Tweet:
                     )
                     break
                 elif len(time_elements) > 1:
-                    raise ValueError(
-                        "Multiple time elements found within the same parent."
+                    logger.warning("multiple time tag found")
+                    logger.warning(
+                        "seems to be inline item card expanded. taking last."
                     )
+                    datetime_value: Optional[str] = time_elements[-1].get_attribute(
+                        "datetime"
+                    )
+                    break
+
                 else:
                     parent_element = parent_element.find_element(By.XPATH, "..")
             except NoSuchElementException:
@@ -213,16 +345,26 @@ def extract_twitter_link(url):
 
 if __name__ == "__main__":
     base_dir = Path(".").parent.absolute()
+    export_path = base_dir / "docs/assets/rss/rss.xml"
 
+    if export_path.exists():
+        logger.info(f"loading '{export_path}'")
+        feed = RSSFeed.import_from_file(export_path)
+        if feed is None:
+            feed = RSSFeed(
+                title="スプラトゥーン3",
+                link="https://twitter.com/SplatoonJP",
+                description="スプラトゥーン3公式Twitter",
+            )
+    else:
+        feed = RSSFeed(
+            title="スプラトゥーン3",
+            link="https://twitter.com/SplatoonJP",
+            description="スプラトゥーン3公式Twitter",
+        )
     logger.info("initializing webdriver")
     driver = initialize_webdriver()
     login_to_twitter(driver, os.environ.get("USERNAME"), os.environ.get("PASSWORD"))
-
-    feed = RSSFeed(
-        title="スプラトゥーン3",
-        link="https://twitter.com/SplatoonJP",
-        description="スプラトゥーン3公式Twitter",
-    )
 
     logger.info("accessing splatoonjp")
     driver.get("https://twitter.com/SplatoonJP")
@@ -252,9 +394,6 @@ if __name__ == "__main__":
             "arguments[0].scrollIntoView({block: 'center'});", element
         )
         sleep(1 + random())
-
-        # click item
-        logger.info(f"clicking item with text {element.text[:50].replace('\n','')}")
         element.click()
         sleep(3 + 4 * random())
         tweet = Tweet(driver, target_text=element_text)
@@ -290,4 +429,4 @@ if __name__ == "__main__":
         )
         sleep(3 + 4 * random())
         driver.back()
-    feed.export(base_dir / "docs/assets/rss/rss.xml")
+    feed.export(export_path)
