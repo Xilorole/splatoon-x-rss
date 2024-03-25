@@ -109,7 +109,7 @@ class RSSFeed:
         """
         return url in self.registered
 
-    def export(self, filename: str):
+    def export(self, filename: os.PathLike):
         """
         Export the RSS feed to an XML file.
 
