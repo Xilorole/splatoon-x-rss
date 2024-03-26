@@ -2,3 +2,4 @@
 *.png
 *.ipynb
 .cache/
+*.pyc
