@@ -396,6 +396,10 @@ if __name__ == "__main__":
         sleep(1 + random())
         element.click()
         sleep(3 + 4 * random())
+        WebDriverWait(driver, 10).until(
+            lambda x: x.find_elements(By.XPATH, '//*[@data-testid="tweetText"]')
+        )
+
         tweet = Tweet(driver, target_text=element_text)
 
         # search splatoon JP in link
