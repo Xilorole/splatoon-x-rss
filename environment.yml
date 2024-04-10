@@ -8,4 +8,5 @@ dependencies:
   - selenium
   - tqdm
   - pip:
-    - webdriver_manager
+      - webdriver_manager
+      - python-Levenshtein
