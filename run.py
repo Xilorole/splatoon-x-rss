@@ -343,6 +343,10 @@ def extract_twitter_link(url):
         return "Invalid Twitter URL"
 
 
+def rep(x: str) -> str:
+    return x.replace("\n", "")
+
+
 if __name__ == "__main__":
     base_dir = Path(".").parent.absolute()
     export_path = base_dir / "docs/assets/rss/rss.xml"
@@ -379,7 +383,7 @@ if __name__ == "__main__":
         element_texts.append(element.text)
     logger.info(f"{len(element_texts)} elements found")
     for i, element_text in enumerate(element_texts):
-        logger.info(f"  - [{i}] {element_text.replace("\n","")[:20]}")
+        logger.info(f"  - [{i}] {rep(element_text)[:20]}")
 
     for element_text in element_texts:
         sleep(3 + 4 * random())
@@ -410,15 +414,15 @@ if __name__ == "__main__":
         cond_registered = feed.is_registered(tweet.link)
 
         if cond_link or cond_title or cond_registered:
-            logger.info(f"skipping {tweet.title.replace('\n','')}")
+            logger.info(f"skipping {rep(tweet.title)}")
             if cond_link:
                 logger.error(f"link is not splatoon: {tweet.link}")
             if cond_title:
                 logger.error(
                     f"title is not same @ {Levenshtein.ratio(tweet.description, element_text):.2f}"
                 )
-                logger.error(f"TARGET: {element_text.replace('\n','')}")
-                logger.error(f"ACCESS: {tweet.description.replace('\n','')}")
+                logger.error(f"TARGET: {rep(element_text)}")
+                logger.error(f"ACCESS: {rep(tweet.description)}")
             if cond_registered:
                 logger.error(f"link is already registered: {tweet.title}")
             driver.back()
