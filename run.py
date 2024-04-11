@@ -416,15 +416,15 @@ if __name__ == "__main__":
         if cond_link or cond_title or cond_registered:
             logger.info(f"skipping {rep(tweet.title)}")
             if cond_link:
-                logger.error(f"link is not splatoon: {tweet.link}")
+                logger.info(f"link is not splatoon: {tweet.link}")
             if cond_title:
-                logger.error(
+                logger.info(
                     f"title is not same @ {Levenshtein.ratio(tweet.description, element_text):.2f}"
                 )
-                logger.error(f"TARGET: {rep(element_text)}")
-                logger.error(f"ACCESS: {rep(tweet.description)}")
+                logger.info(f"TARGET: {rep(element_text)}")
+                logger.info(f"ACCESS: {rep(tweet.description)}")
             if cond_registered:
-                logger.error(f"link is already registered: {tweet.title}")
+                logger.info(f"link is already registered: {tweet.title}")
             driver.back()
             continue
 
